@@ -496,8 +496,9 @@ function spawnFruit(now) {
     sprite: isBomb ? "bomb" : fruitSpec.sprite,
     fallback: fruitSpec.fallback,
     x,
-    y: rand(-3.7, -1.6),
-    z: rand(2.2, 2.78),
+    // Spawn well above the visible plane so every fruit drops in from the top.
+    y: rand(-5.6, -4.8),
+    z: rand(2.35, 2.75),
     vx,
     vy: rand(1.1, 1.95),
     vz: rand(-1.08, -0.66),
