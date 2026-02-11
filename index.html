@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>POV Slice Arena</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="arena">
+        <video id="camera" autoplay muted playsinline></video>
+        <canvas id="world"></canvas>
+
+        <header class="hud">
+          <div class="hud-card">
+            <p class="hud-label">Score</p>
+            <p class="hud-value" id="score">0</p>
+          </div>
+          <div class="hud-card">
+            <p class="hud-label">Time</p>
+            <p class="hud-value" id="time">60</p>
+          </div>
+          <div class="hud-card">
+            <p class="hud-label">Lives</p>
+            <p class="hud-value" id="lives">3</p>
+          </div>
+          <div class="hud-card">
+            <p class="hud-label">High</p>
+            <p class="hud-value" id="high-score">0</p>
+          </div>
+          <div class="hud-card hud-card-toggle">
+            <p class="hud-label">Bombs</p>
+            <button id="bombs-toggle" class="hud-toggle" type="button" aria-pressed="true">ON</button>
+          </div>
+          <div class="hud-card hud-card-toggle">
+            <p class="hud-label">Sound</p>
+            <button id="sfx-toggle" class="hud-toggle" type="button" aria-pressed="true">ON</button>
+          </div>
+          <div class="hud-card hud-card-toggle">
+            <p class="hud-label">Music</p>
+            <button id="music-toggle" class="hud-toggle" type="button" aria-pressed="true">ON</button>
+          </div>
+        </header>
+
+        <section class="panel" id="start-panel">
+          <p class="eyebrow">MediaPipe POV mode</p>
+          <h1>Slice Arena</h1>
+          <p class="panel-copy">
+            Use your glowing index finger surface to slice fruit.
+          </p>
+          <p class="status">Set Bombs/Sound/Music from the HUD before starting.</p>
+          <button id="start-btn" class="action">Start Round</button>
+          <p id="status" class="status">Allow camera, then hold your index fingertip on Start Round.</p>
+        </section>
+
+        <section class="panel hidden" id="end-panel">
+          <p class="eyebrow">Round complete</p>
+          <h2 id="final-score">Score: 0</h2>
+          <p id="best-score" class="status">Best: 0</p>
+          <button id="restart-btn" class="action">Play Again</button>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

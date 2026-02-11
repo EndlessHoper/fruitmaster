@@ -1,0 +1,3 @@
+Sprite source: Twemoji (https://github.com/twitter/twemoji)
+Files downloaded via jsDelivr from twemoji@14.0.2
+License: CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
