@@ -40,12 +40,14 @@ const AUDIO_PREFS_KEY = "pov_slice_audio_prefs_v1";
 const MUSIC_STEPS = [0, 3, 7, 10, 7, 3, 5, 8];
 const CAMERA_WIDTH = 960;
 const CAMERA_HEIGHT = 540;
-const CAMERA_FPS_ACTIVE = 22;
+const CAMERA_FPS_ACTIVE = 30;
 const CAMERA_FPS_IDLE = 7;
-const RENDER_FPS_ACTIVE = 48;
+const RENDER_FPS_ACTIVE = 60;
 const RENDER_FPS_IDLE = 24;
 const RENDER_DPR_CAP = 1.5;
 const PARTICLE_DENSITY = 0.78;
+const TRACK_SMOOTH_BASE = 0.52;
+const TRACK_SMOOTH_MAX = 0.84;
 
 let width = 0;
 let height = 0;
@@ -464,13 +466,12 @@ function resize() {
 }
 
 function projectEntity(entity) {
-  const depth = Math.max(0.2, entity.z);
   const plane = Math.min(width, height) * 0.46;
+  const scaleBase = 2.5;
   return {
-    x: width * 0.5 + (entity.x / depth) * plane,
-    y: height * 0.6 + (entity.y / depth) * plane,
-    r: (entity.r / depth) * plane,
-    depth,
+    x: width * 0.5 + (entity.x / scaleBase) * plane,
+    y: height * 0.6 + (entity.y / scaleBase) * plane,
+    r: (entity.r / scaleBase) * plane,
   };
 }
 
@@ -497,11 +498,9 @@ function spawnFruit(now) {
     fallback: fruitSpec.fallback,
     x,
     // Spawn well above the visible plane so every fruit drops in from the top.
-    y: rand(-5.6, -4.8),
-    z: rand(2.35, 2.75),
+    y: rand(-5.2, -4.5),
     vx,
-    vy: rand(1.1, 1.95),
-    vz: rand(-1.08, -0.66),
+    vy: rand(0.58, 1.08),
     r: rand(0.18, 0.3),
     rot: rand(0, Math.PI * 2),
     spin: rand(-2.6, 2.6),
@@ -676,10 +675,9 @@ function updateGame(dt, now) {
   for (let i = fruits.length - 1; i >= 0; i -= 1) {
     const fruit = fruits[i];
 
-    fruit.vy += 2.15 * dt;
+    fruit.vy += 1.28 * dt;
     fruit.x += fruit.vx * dt;
     fruit.y += fruit.vy * dt;
-    fruit.z += fruit.vz * dt;
     fruit.rot += fruit.spin * dt;
 
     if (running && slashHitsFruit(fruit)) {
@@ -703,8 +701,7 @@ function updateGame(dt, now) {
     const outOfView =
       p.y - p.r > height + 80 ||
       p.x + p.r < -80 ||
-      p.x - p.r > width + 80 ||
-      fruit.z < 0.16;
+      p.x - p.r > width + 80;
 
     if (outOfView) {
       if (running && fruit.kind === "fruit") {
@@ -980,8 +977,7 @@ function render() {
   ctx.clearRect(0, 0, width, height);
   drawBackgroundOverlay();
 
-  const sorted = fruits.slice().sort((a, b) => b.z - a.z);
-  for (const fruit of sorted) {
+  for (const fruit of fruits) {
     drawFruit(fruit);
   }
 
@@ -1025,14 +1021,16 @@ function onResults(results) {
     indexFingerPose.tipX = targetTipX;
     indexFingerPose.tipY = targetTipY;
   } else {
-    indexFingerPose.mcpX = smooth(indexFingerPose.mcpX, targetMcpX, 0.45);
-    indexFingerPose.mcpY = smooth(indexFingerPose.mcpY, targetMcpY, 0.45);
-    indexFingerPose.pipX = smooth(indexFingerPose.pipX, targetPipX, 0.45);
-    indexFingerPose.pipY = smooth(indexFingerPose.pipY, targetPipY, 0.45);
-    indexFingerPose.dipX = smooth(indexFingerPose.dipX, targetDipX, 0.45);
-    indexFingerPose.dipY = smooth(indexFingerPose.dipY, targetDipY, 0.45);
-    indexFingerPose.tipX = smooth(indexFingerPose.tipX, targetTipX, 0.45);
-    indexFingerPose.tipY = smooth(indexFingerPose.tipY, targetTipY, 0.45);
+    const tipMotion = Math.hypot(targetTipX - indexFingerPose.tipX, targetTipY - indexFingerPose.tipY);
+    const smoothFactor = clamp(TRACK_SMOOTH_BASE + tipMotion / 110, TRACK_SMOOTH_BASE, TRACK_SMOOTH_MAX);
+    indexFingerPose.mcpX = smooth(indexFingerPose.mcpX, targetMcpX, smoothFactor);
+    indexFingerPose.mcpY = smooth(indexFingerPose.mcpY, targetMcpY, smoothFactor);
+    indexFingerPose.pipX = smooth(indexFingerPose.pipX, targetPipX, smoothFactor);
+    indexFingerPose.pipY = smooth(indexFingerPose.pipY, targetPipY, smoothFactor);
+    indexFingerPose.dipX = smooth(indexFingerPose.dipX, targetDipX, smoothFactor);
+    indexFingerPose.dipY = smooth(indexFingerPose.dipY, targetDipY, smoothFactor);
+    indexFingerPose.tipX = smooth(indexFingerPose.tipX, targetTipX, smoothFactor);
+    indexFingerPose.tipY = smooth(indexFingerPose.tipY, targetTipY, smoothFactor);
   }
 
   const fingerLength =
