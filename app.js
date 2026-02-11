@@ -40,10 +40,6 @@ const AUDIO_PREFS_KEY = "pov_slice_audio_prefs_v1";
 const MUSIC_STEPS = [0, 3, 7, 10, 7, 3, 5, 8];
 const CAMERA_WIDTH = 960;
 const CAMERA_HEIGHT = 540;
-const CAMERA_FPS_ACTIVE = 30;
-const CAMERA_FPS_IDLE = 7;
-const RENDER_FPS_ACTIVE = 60;
-const RENDER_FPS_IDLE = 24;
 const RENDER_DPR_CAP = 1.5;
 const PARTICLE_DENSITY = 0.78;
 const TRACK_SMOOTH_BASE = 0.52;
@@ -100,8 +96,6 @@ let audioReady = false;
 let musicNextAt = 0;
 let musicStep = 0;
 let lastSliceSfxAt = 0;
-let lastInferenceAt = 0;
-let lastRenderAt = performance.now();
 let resumeTrackingWhenVisible = false;
 let resumeRoundWhenVisible = false;
 let inferenceBusy = false;
@@ -1079,14 +1073,11 @@ async function initTracking() {
             return;
           }
 
-          const now = performance.now();
-          const targetFps = running ? CAMERA_FPS_ACTIVE : CAMERA_FPS_IDLE;
-          if (inferenceBusy || now - lastInferenceAt < 1000 / targetFps) {
+          if (inferenceBusy) {
             return;
           }
 
           inferenceBusy = true;
-          lastInferenceAt = now;
           try {
             await hands.send({ image: video });
           } finally {
@@ -1098,7 +1089,6 @@ async function initTracking() {
       });
     }
 
-    lastInferenceAt = 0;
     inferenceBusy = false;
     await camera.start();
     trackingReady = true;
@@ -1126,20 +1116,11 @@ async function stopTracking() {
 
   trackingReady = false;
   inferenceBusy = false;
-  lastInferenceAt = 0;
   handDetected = false;
   indexFingerPose.ready = false;
 }
 
 function frame(now) {
-  const targetFps = running ? RENDER_FPS_ACTIVE : RENDER_FPS_IDLE;
-  const minFrameMs = 1000 / targetFps;
-  if (now - lastRenderAt < minFrameMs) {
-    requestAnimationFrame(frame);
-    return;
-  }
-  lastRenderAt = now;
-
   const dt = Math.min(0.033, (now - lastTick) / 1000);
   lastTick = now;
 
@@ -1178,7 +1159,6 @@ async function handleVisibilityChange() {
   }
 
   lastTick = performance.now();
-  lastRenderAt = lastTick;
 
   if (resumeTrackingWhenVisible) {
     const shouldResumeRound = resumeRoundWhenVisible;
