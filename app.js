@@ -38,6 +38,14 @@ const SPRITE_SOURCES = {
 const HIGH_SCORE_KEY = "pov_slice_high_score_v1";
 const AUDIO_PREFS_KEY = "pov_slice_audio_prefs_v1";
 const MUSIC_STEPS = [0, 3, 7, 10, 7, 3, 5, 8];
+const CAMERA_WIDTH = 960;
+const CAMERA_HEIGHT = 540;
+const CAMERA_FPS_ACTIVE = 22;
+const CAMERA_FPS_IDLE = 7;
+const RENDER_FPS_ACTIVE = 48;
+const RENDER_FPS_IDLE = 24;
+const RENDER_DPR_CAP = 1.5;
+const PARTICLE_DENSITY = 0.78;
 
 let width = 0;
 let height = 0;
@@ -90,6 +98,11 @@ let audioReady = false;
 let musicNextAt = 0;
 let musicStep = 0;
 let lastSliceSfxAt = 0;
+let lastInferenceAt = 0;
+let lastRenderAt = performance.now();
+let resumeTrackingWhenVisible = false;
+let resumeRoundWhenVisible = false;
+let inferenceBusy = false;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -440,7 +453,7 @@ function resize() {
   const bounds = arenaEl.getBoundingClientRect();
   width = Math.round(bounds.width);
   height = Math.round(bounds.height);
-  dpr = window.devicePixelRatio || 1;
+  dpr = Math.min(window.devicePixelRatio || 1, RENDER_DPR_CAP);
 
   canvas.width = Math.floor(width * dpr);
   canvas.height = Math.floor(height * dpr);
@@ -514,6 +527,7 @@ function resetRound() {
 function startRound() {
   resetRound();
   running = true;
+  resumeRoundWhenVisible = false;
   setBombsControlLocked(true);
   resetMusicLoop();
   startPanel.classList.add("hidden");
@@ -529,6 +543,7 @@ function endRound(reason) {
   }
 
   running = false;
+  resumeRoundWhenVisible = false;
   setBombsControlLocked(false);
   resetMusicLoop();
   finalScoreEl.textContent = `Score: ${score}`;
@@ -545,7 +560,8 @@ function endRound(reason) {
 }
 
 function createBurst(x, y, color, amount = 18) {
-  for (let i = 0; i < amount; i += 1) {
+  const total = Math.max(6, Math.round(amount * PARTICLE_DENSITY));
+  for (let i = 0; i < total; i += 1) {
     const speed = rand(80, 420);
     const angle = rand(0, Math.PI * 2);
     particles.push({
@@ -1042,29 +1058,49 @@ async function initTracking() {
   }
 
   try {
-    hands = new window.Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
+    if (!hands) {
+      hands = new window.Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      });
 
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.72,
-      minTrackingConfidence: 0.66,
-    });
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.62,
+      });
 
-    hands.onResults(onResults);
+      hands.onResults(onResults);
+    }
 
-    camera = new window.Camera(video, {
-      onFrame: async () => {
-        if (hands && video.readyState >= 2) {
-          await hands.send({ image: video });
-        }
-      },
-      width: 1280,
-      height: 720,
-    });
+    if (!camera) {
+      camera = new window.Camera(video, {
+        onFrame: async () => {
+          if (!hands || video.readyState < 2) {
+            return;
+          }
 
+          const now = performance.now();
+          const targetFps = running ? CAMERA_FPS_ACTIVE : CAMERA_FPS_IDLE;
+          if (inferenceBusy || now - lastInferenceAt < 1000 / targetFps) {
+            return;
+          }
+
+          inferenceBusy = true;
+          lastInferenceAt = now;
+          try {
+            await hands.send({ image: video });
+          } finally {
+            inferenceBusy = false;
+          }
+        },
+        width: CAMERA_WIDTH,
+        height: CAMERA_HEIGHT,
+      });
+    }
+
+    lastInferenceAt = 0;
+    inferenceBusy = false;
     await camera.start();
     trackingReady = true;
     statusEl.textContent = startPanel.classList.contains("hidden")
@@ -1079,7 +1115,32 @@ async function initTracking() {
   }
 }
 
+async function stopTracking() {
+  if (!camera) {
+    return;
+  }
+  try {
+    await camera.stop();
+  } catch {
+    // Camera may already be stopped.
+  }
+
+  trackingReady = false;
+  inferenceBusy = false;
+  lastInferenceAt = 0;
+  handDetected = false;
+  indexFingerPose.ready = false;
+}
+
 function frame(now) {
+  const targetFps = running ? RENDER_FPS_ACTIVE : RENDER_FPS_IDLE;
+  const minFrameMs = 1000 / targetFps;
+  if (now - lastRenderAt < minFrameMs) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  lastRenderAt = now;
+
   const dt = Math.min(0.033, (now - lastTick) / 1000);
   lastTick = now;
 
@@ -1101,6 +1162,42 @@ function frame(now) {
   updateHandControls(now);
   render();
   requestAnimationFrame(frame);
+}
+
+async function handleVisibilityChange() {
+  if (document.hidden) {
+    resumeTrackingWhenVisible = trackingReady;
+    if (running) {
+      running = false;
+      resumeRoundWhenVisible = true;
+      statusEl.textContent = "Paused in background to save CPU. Return to this tab to resume.";
+    }
+    if (resumeTrackingWhenVisible) {
+      await stopTracking();
+    }
+    return;
+  }
+
+  lastTick = performance.now();
+  lastRenderAt = lastTick;
+
+  if (resumeTrackingWhenVisible) {
+    const shouldResumeRound = resumeRoundWhenVisible;
+    resumeTrackingWhenVisible = false;
+    const ok = await initTracking();
+    if (ok && shouldResumeRound) {
+      running = true;
+      resumeRoundWhenVisible = false;
+      statusEl.textContent = "Round resumed. Point your index finger to slash.";
+    }
+    return;
+  }
+
+  if (resumeRoundWhenVisible) {
+    running = true;
+    resumeRoundWhenVisible = false;
+    statusEl.textContent = "Round resumed. Point your index finger to slash.";
+  }
 }
 
 async function handleStartClick() {
@@ -1163,6 +1260,12 @@ window.addEventListener(
 );
 window.addEventListener("keydown", () => {
   void ensureAudioUnlocked();
+});
+document.addEventListener("visibilitychange", () => {
+  void handleVisibilityChange();
+});
+window.addEventListener("pagehide", () => {
+  void stopTracking();
 });
 window.addEventListener("resize", resize);
 resize();
